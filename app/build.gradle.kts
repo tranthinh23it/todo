@@ -56,6 +56,8 @@ dependencies {
     implementation(libs.androidx.foundation.layout.android)
     implementation(libs.androidx.runtime.livedata)
     implementation(libs.androidx.core.i18n)
+    implementation(libs.play.services.base)
+    implementation(libs.play.services.base)
 
     val nav_version = "2.9.1"
 

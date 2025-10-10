@@ -15,16 +15,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import com.example.to_do_app.R
 import com.example.to_do_app.ui.theme.To_do_appTheme
+import com.example.to_do_app.util.Screens
 
 @Composable
-fun StartPage() {
+fun StartPage(
+    navController: NavController
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -55,8 +62,9 @@ fun StartPage() {
         // Title
         Text(
             text = "Let's Get Started!",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 30.sp,
+            ),
             color = Color.Black
         )
         
@@ -65,16 +73,18 @@ fun StartPage() {
         // Subtitle
         Text(
             text = "Let's dive in to your account",
-            fontSize = 16.sp,
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontSize = 16.sp,
+            ),
             color = Color.Gray,
             textAlign = TextAlign.Center
         )
         
-        Spacer(modifier = Modifier.height(60.dp))
+        Spacer(modifier = Modifier.height(50.dp))
         
         // Social Login Buttons
         SocialLoginButton(
-            icon = Icons.Default.Search, // Google icon placeholder
+            icon = painterResource(R.drawable.google), // Google icon placeholder
             text = "Continue with Google",
             backgroundColor = Color.White,
             textColor = Color.Black,
@@ -84,7 +94,7 @@ fun StartPage() {
         Spacer(modifier = Modifier.height(16.dp))
         
         SocialLoginButton(
-            icon = Icons.Default.ExitToApp, // Apple icon placeholder
+            icon = painterResource(R.drawable.google), // Apple icon placeholder
             text = "Continue with Apple",
             backgroundColor = Color.White,
             textColor = Color.Black,
@@ -94,28 +104,21 @@ fun StartPage() {
         Spacer(modifier = Modifier.height(16.dp))
         
         SocialLoginButton(
-            icon = Icons.Default.Face, // Facebook icon placeholder
+            icon = painterResource(R.drawable.facebook), // Facebook icon placeholder
             text = "Continue with Facebook",
             backgroundColor = Color.White,
             textColor = Color.Black,
             borderColor = Color.LightGray
         )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        SocialLoginButton(
-            icon = Icons.Default.Close, // X icon placeholder
-            text = "Continue with X",
-            backgroundColor = Color.White,
-            textColor = Color.Black,
-            borderColor = Color.LightGray
-        )
-        
+
+
         Spacer(modifier = Modifier.weight(1f))
         
         // Sign Up Button
         Button(
-            onClick = { /* TODO: Navigate to sign up */ },
+            onClick = {
+                navController.navigate(Screens.RegisterPage.route)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
@@ -126,8 +129,9 @@ fun StartPage() {
         ) {
             Text(
                 text = "Sign up",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontSize = 16.sp,
+                ),
                 color = Color.White
             )
         }
@@ -136,7 +140,9 @@ fun StartPage() {
         
         // Sign In Button
         Button(
-            onClick = { /* TODO: Navigate to sign in */ },
+            onClick = {
+                navController.navigate(Screens.LoginPage.route)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
@@ -147,8 +153,9 @@ fun StartPage() {
         ) {
             Text(
                 text = "Sign In",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontSize = 16.sp,
+                ),
                 color = Color(0xFFFF4040)
             )
         }
@@ -161,13 +168,17 @@ fun StartPage() {
         ) {
             Text(
                 text = "Privacy Policy",
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontSize = 14.sp,
+                ),
                 color = Color.Gray,
                 modifier = Modifier.clickable { /* TODO */ }
             )
             Text(
                 text = "Terms of Service",
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontSize = 14.sp,
+                ),
                 color = Color.Gray,
                 modifier = Modifier.clickable { /* TODO */ }
             )
@@ -179,7 +190,7 @@ fun StartPage() {
 
 @Composable
 fun SocialLoginButton(
-    icon: ImageVector,
+    icon: Painter,
     text: String,
     backgroundColor: Color,
     textColor: Color,
@@ -201,16 +212,17 @@ fun SocialLoginButton(
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = icon,
+                painter = icon,
                 contentDescription = null,
-                tint = textColor,
+                tint =  Color.Unspecified,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = text,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontSize = 16.sp,
+                ),
                 color = textColor
             )
         }
@@ -221,6 +233,6 @@ fun SocialLoginButton(
 @Composable
 fun StartPagePreview() {
     To_do_appTheme {
-        StartPage()
+//        StartPage()
     }
 }

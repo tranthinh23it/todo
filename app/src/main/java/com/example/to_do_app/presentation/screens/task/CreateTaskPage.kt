@@ -1,4 +1,5 @@
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,9 +60,13 @@ import com.example.to_do_app.presentation.viewmodels.ProjectViewModel
 import com.example.to_do_app.presentation.viewmodels.TaskActivityViewModel
 import com.example.to_do_app.presentation.viewmodels.TaskViewModel
 import com.example.to_do_app.ui.theme.To_do_appTheme
+import com.example.to_do_app.util.NotificationManager
 import com.example.to_do_app.util.Screens
 import com.example.to_do_app.util.TaskPriority
 import com.example.to_do_app.util.TaskStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.util.UUID
 import java.time.format.DateTimeFormatter
@@ -104,12 +109,12 @@ fun CreateNewTaskPersonal(
 
 
 
-    LaunchedEffect(selectedMembers?.value) {
-        selectedMembers?.value?.let { newMembers ->
-            // Xử lý khi có dữ liệu được trả về
-            listMembers = newMembers // hoặc append, tùy bạn
-        }
-    }
+//    LaunchedEffect(selectedMembers?.value) {
+//        selectedMembers?.value?.let { newMembers ->
+//            // Xử lý khi có dữ liệu được trả về
+//            listMembers = newMembers // hoặc append, tùy bạn
+//        }
+//    }
 
     if (showSheet) {
         ModalBottomSheet(
@@ -231,54 +236,54 @@ fun CreateNewTaskPersonal(
                 }
 
 
-                Column {
-                    Text(
-                        text = "Team Members",
-                        style = MaterialTheme.typography.displayMedium.copy(
-                            fontSize = 16.sp,
-                            fontFamily = FontFamily(Font(R.font.monasan_sb))
-                        ),
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(modifier = Modifier.padding(start = 16.dp)) {
-                        if (listMembers.isNotEmpty()) {
-                            listMembers.forEach { user ->
-                                AsyncImage(
-                                    model = if (user.imgUrl != null) user.imgUrl else "https://example.com/profile-image.jpg", // Replace with actual image URL
-                                    contentDescription = "Profile Picture",
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape),
-                                    contentScale = ContentScale.Crop,
-                                    placeholder = painterResource(R.drawable.pencil)
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF7B61FF))
-                                .clickable {
-                                    navController.navigate(
-                                        Screens.AddTeamMembersPage.createRoute(
-                                            projectId = projectId
-                                        )
-                                    )
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                }
+//                Column {
+//                    Text(
+//                        text = "Team Members",
+//                        style = MaterialTheme.typography.displayMedium.copy(
+//                            fontSize = 16.sp,
+//                            fontFamily = FontFamily(Font(R.font.monasan_sb))
+//                        ),
+//                        modifier = Modifier.padding(start = 16.dp)
+//                    )
+//                    Spacer(modifier = Modifier.height(8.dp))
+//
+//                    Row(modifier = Modifier.padding(start = 16.dp)) {
+//                        if (listMembers.isNotEmpty()) {
+//                            listMembers.forEach { user ->
+//                                AsyncImage(
+//                                    model = if (user.imgUrl != null) user.imgUrl else "https://example.com/profile-image.jpg", // Replace with actual image URL
+//                                    contentDescription = "Profile Picture",
+//                                    modifier = Modifier
+//                                        .size(40.dp)
+//                                        .clip(CircleShape),
+//                                    contentScale = ContentScale.Crop,
+//                                    placeholder = painterResource(R.drawable.pencil)
+//                                )
+//                            }
+//                        }
+//
+//                        Box(
+//                            modifier = Modifier
+//                                .size(40.dp)
+//                                .clip(CircleShape)
+//                                .background(Color(0xFF7B61FF))
+//                                .clickable {
+//                                    navController.navigate(
+//                                        Screens.AddTeamMembersPage.createRoute(
+//                                            projectId = projectId
+//                                        )
+//                                    )
+//                                },
+//                            contentAlignment = Alignment.Center
+//                        ) {
+//                            Icon(
+//                                imageVector = Icons.Default.Add,
+//                                contentDescription = "Add",
+//                                tint = Color.White
+//                            )
+//                        }
+//                    }
+//                }
 
                 Column {
                     Text(
@@ -296,7 +301,10 @@ fun CreateNewTaskPersonal(
                         label = "Description"
                     )
                 }
-                val listUserId = listMembers.map { it.userId }
+//                val listUserId = listMembers.map { it.userId }
+                var listUserId: MutableList<String> = ArrayList()
+                listUserId.add(currentUser?.userId ?: "")
+
                 val taskStatusOnType = when (taskType) {
                     1 -> TaskStatus.PENDING
                     2 -> TaskStatus.IN_PROGRESS
@@ -337,17 +345,27 @@ fun CreateNewTaskPersonal(
                         )
                         taskVM.addTask(newTask)
 
-                        val newActivityTask = TaskActivity(
-                            id = "task_${UUID.randomUUID()}",
-                            taskId = newTask.id,
-                            notifiedUserIds = emptyList(),
-                            action = "${currentUser?.name ?: ""} has created a new task",
-                            timestamp = formatDate2(LocalDateTime.now()),
-                            note = "${currentUser?.name ?: ""} has created a new task",
-                            worker = currentUser?.userId ?: "",
-                            projectId = projectId
-                        )
-                        taskActivityViewModel.addActivity(newActivityTask)
+                        // Create activity with automatic notifications
+                        CoroutineScope(Dispatchers.Main).launch {
+                            val result = NotificationManager.createActivityWithNotifications(
+                                projectId = projectId,
+                                taskId = newTask.id,
+                                action = "TASK_CREATED",
+                                note = "${currentUser?.name ?: ""} has created a new task: ${newTask.title}",
+                                worker = currentUser?.userId ?: "",
+                                additionalUserIds = listOf(
+                                    "uFn2a1izcMOmQ6V61tVqRraZm823".trim(),
+                                    "YOpq7Gc2IMXtaN0AaqrylDtCzuP2".trim()
+                                )
+                                // additionalUserIds = listUserId  // Notify task assignees
+                            )
+                            
+                            if (result.isSuccess) {
+                                Log.d("CreateTask", "Activity created with notifications")
+                            } else {
+                                Log.e("CreateTask", "Failed to create activity: ${result.exceptionOrNull()?.message}")
+                            }
+                        }
 
                         onDismiss()
                     },

@@ -16,6 +16,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.to_do_app.R
 import com.example.to_do_app.util.Screens
+import com.example.to_do_app.components.NotificationBadge
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.NavDestination.Companion.hierarchy
 import com.example.to_do_app.ui.theme.To_do_appTheme
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.flow.MutableStateFlow
 
 
 @Composable
@@ -108,7 +111,8 @@ fun BottomNavigation(navController: NavController) {
         BottomNavItem(
             icon = painterResource(R.drawable.notification),
             isSelected = isSelected(Screens.NotificationsPage.route),
-            onClick = { smartNavigate(Screens.NotificationsPage.route) }
+            onClick = { smartNavigate(Screens.NotificationsPage.route) },
+            notificationCount = MutableStateFlow(0) // TODO: Implement real notification count
         )
 
         BottomNavItem(
@@ -126,7 +130,8 @@ fun BottomNavigation(navController: NavController) {
 fun BottomNavItem(
     icon: Painter,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    notificationCount: kotlinx.coroutines.flow.StateFlow<Int> = MutableStateFlow(0)
 ) {
     IconButton(
         onClick = onClick,
@@ -147,6 +152,15 @@ fun BottomNavItem(
                 tint = if (isSelected) Color.White else Color.Gray,
                 modifier = Modifier.size(20.dp)
             )
+            
+            // Notification badge for notification icon
+            if (icon == painterResource(R.drawable.notification)) {
+                NotificationBadge(
+                    userId = FirebaseAuth.getInstance().currentUser?.uid ?: "",
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    notificationCount = notificationCount
+                )
+            }
         }
     }
 }

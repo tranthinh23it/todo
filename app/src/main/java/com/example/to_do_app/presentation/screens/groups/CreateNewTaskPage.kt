@@ -49,7 +49,6 @@ import com.example.to_do_app.R
 import com.example.to_do_app.components.CustomInputField
 import com.example.to_do_app.components.DateTimePickerField
 import com.example.to_do_app.domain.Task
-import com.example.to_do_app.domain.TaskActivity
 import com.example.to_do_app.domain.User
 import com.example.to_do_app.presentation.screens.user.AvatarPickerIcon
 import com.example.to_do_app.presentation.viewmodels.AuthViewModel
@@ -65,6 +64,14 @@ import java.util.UUID
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.random.Random
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import android.util.Log
+import com.example.to_do_app.domain.Notification
+import com.example.to_do_app.presentation.viewmodels.NotificationViewModel
+import com.example.to_do_app.util.NotificationManager
+import com.google.firebase.Timestamp
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,13 +85,24 @@ fun CreateNewTaskBottomSheet(
     projectVM: ProjectViewModel = viewModel(),
     taskVM: TaskViewModel = viewModel(),
     authVM: AuthViewModel = viewModel(),
-    taskActivityViewModel: TaskActivityViewModel = viewModel()
+    taskActivityViewModel: TaskActivityViewModel = viewModel(),
+    notificationVM : NotificationViewModel = viewModel()
 ) {
-//    Log.d("task type ", taskType.toString())
+
+    Log.d("CreateNewTask", "=== FUNCTION CALLED ===")
+    Log.d("CreateNewTask", "showSheet: $showSheet, projectId: $projectId, taskType: $taskType")
+
     val sheetState = rememberModalBottomSheetState()
     val currentUser by authVM.currentUser.observeAsState()
+
     LaunchedEffect(Unit) {
-        authVM.fetchAndSetCurrentUser()
+        try {
+            Log.d("CreateNewTask", "LaunchedEffect triggered - fetching current user")
+            authVM.fetchAndSetCurrentUser()
+            Log.d("CreateNewTask", "Current user fetch completed")
+        } catch (e: Exception) {
+            Log.e("CreateNewTask", "Error in LaunchedEffect: ${e.message}", e)
+        }
     }
 
     var selectedImage by remember { mutableStateOf<Uri?>(null) }
@@ -96,16 +114,17 @@ fun CreateNewTaskBottomSheet(
     val selectedDateTime = remember { mutableStateOf(LocalDateTime.now()) }
 
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
-    val selectedMembers =
-        savedStateHandle?.getLiveData<List<User>>("selected_members")?.observeAsState()
+    val selectedIds by savedStateHandle
+        ?.getLiveData<ArrayList<String>>("selected_members_ids")
+        ?.observeAsState()
+        ?: remember { mutableStateOf<ArrayList<String>?>(null) }
+
     var listMembers by remember { mutableStateOf<List<User>>(emptyList()) }
 
-
-
-    LaunchedEffect(selectedMembers?.value) {
-        selectedMembers?.value?.let { newMembers ->
-            // Xử lý khi có dữ liệu được trả về
-            listMembers = newMembers // hoặc append, tùy bạn
+    LaunchedEffect(selectedIds) {
+        selectedIds?.let { ids ->
+            val users = ids.mapNotNull { id -> authVM.getUserById(id) }
+            listMembers = users
         }
     }
 
@@ -306,17 +325,75 @@ fun CreateNewTaskBottomSheet(
                         )
                         taskVM.addTask(newTask)
 
-                        val newActivityTask = TaskActivity(
-                            id = "task_${UUID.randomUUID()}",
-                            taskId = newTask.id,
-                            notifiedUserIds = emptyList(),
-                            action = "${currentUser?.name ?:""} has created a new task",
-                            timestamp = formatDate2(LocalDateTime.now()),
-                            note = "${currentUser?.name ?:""} has created a new task",
-                            worker = currentUser?.userId ?: "",
-                            projectId = projectId
-                        )
-                        taskActivityViewModel.addActivity(newActivityTask)
+                        listUserId.forEach { userId ->
+                            val newNotification = Notification(
+                                id = "notif_${UUID.randomUUID()}",
+                                recipientId = userId,
+                                type = "TASK_ASSIGNED",
+                                message = "You have been assigned to a new task: ${newTask.title}",
+                                time = Timestamp.now(),
+                                seen = false,
+                                projectId = projectId,
+                                taskId = newTask.id,
+                                activityId = newTask.id, // nếu có activity riêng, thay bằng activity.id
+                                deeplink = "todoapp://projects/$projectId/tasks/${newTask.id}",
+                                expireAt = null
+                                // nếu Notification có trường recipient/userId thì thêm:
+                                // recipientId = userId
+                            )
+                            notificationVM.addNotification(newNotification)
+                            // notificationsRepo.addForUser(userId, newNotification)
+                        }
+                        // Create activity with automatic notifications
+                        CoroutineScope(Dispatchers.Main).launch {
+                            // Ensure we have users to notify
+                            val usersToNotify = if (listUserId.isNotEmpty()) {
+                                listUserId
+                            } else {
+                                // If no assignees, notify at least 2 test users
+                                listOf(
+                                    "uFn2a1izcMOmQ6V61tVqRraZm823",
+                                    "YOpq7Gc2IMXtaN0AaqrylDtCzuP2"
+                                )
+                            }
+
+                            // Add currentUser for testing (remove this in production)
+                            val allUsersToNotify =
+                                usersToNotify + listOf(currentUser?.userId ?: "")
+
+                            Log.d("CreateNewTask", "=== DEBUG START ===")
+                            Log.d("CreateNewTask", "Users to notify: $usersToNotify")
+                            Log.d(
+                                "CreateNewTask",
+                                "All users to notify (including currentUser): $allUsersToNotify"
+                            )
+                            Log.d(
+                                "CreateNewTask",
+                                "Current user: ${currentUser?.name} (${currentUser?.userId})"
+                            )
+                            Log.d("CreateNewTask", "=== DEBUG END ===")
+
+                            val result = NotificationManager.createActivityWithNotifications(
+                                projectId = projectId,
+                                taskId = newTask.id,
+                                action = "TASK_CREATED",
+                                note = "${currentUser?.name ?: ""} has created a new task: ${newTask.title}",
+                                worker = currentUser?.userId ?: "",
+                                additionalUserIds = allUsersToNotify
+                            )
+
+                            if (result.isSuccess) {
+                                Log.d(
+                                    "CreateNewTask",
+                                    "Activity created with notifications for ${usersToNotify.size} users"
+                                )
+                            } else {
+                                Log.e(
+                                    "CreateNewTask",
+                                    "Failed to create activity: ${result.exceptionOrNull()?.message}"
+                                )
+                            }
+                        }
 
                         onDismiss()
                     },
@@ -342,8 +419,8 @@ fun CreateNewTaskBottomSheet(
             }
         }
     }
-}
 
+}
 
 @Preview
 @Composable
@@ -370,7 +447,8 @@ fun formatDate(dateTime: LocalDateTime): String {
 
 fun formatToMMMdd(dateString: String): String {
     val formatterInput = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")  // Định dạng đầu vào
-    val formatterOutput = DateTimeFormatter.ofPattern("MMM-dd", java.util.Locale.ENGLISH)  // Định dạng đầu ra
+    val formatterOutput =
+        DateTimeFormatter.ofPattern("MMM-dd", java.util.Locale.ENGLISH)  // Định dạng đầu ra
 
     // Phân tích chuỗi thành LocalDateTime
     val dateTime = LocalDateTime.parse(dateString, formatterInput)

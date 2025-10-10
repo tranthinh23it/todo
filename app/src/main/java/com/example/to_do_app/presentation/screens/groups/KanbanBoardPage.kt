@@ -26,6 +26,7 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,13 +45,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
 import com.example.to_do_app.R
 import com.example.to_do_app.components.DeleteTaskDialog2
 import com.example.to_do_app.domain.Task
-import com.example.to_do_app.domain.TaskActivity
 import com.example.to_do_app.domain.TimeEvent
 import com.example.to_do_app.domain.TimeLine
+import com.google.firebase.Timestamp
 import com.example.to_do_app.domain.User
 import com.example.to_do_app.presentation.viewmodels.AuthViewModel
 import com.example.to_do_app.presentation.viewmodels.ProjectViewModel
@@ -60,19 +60,19 @@ import com.example.to_do_app.presentation.viewmodels.TimeLineViewModel
 import com.example.to_do_app.ui.theme.To_do_appTheme
 import com.example.to_do_app.util.TaskPriority
 import com.example.to_do_app.util.TaskStatus
-import formatDate
-import formatDate2
+import com.example.to_do_app.util.NotificationManager
 import formatToMMMdd
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.WeekFields
 import java.util.Calendar
 import java.util.Locale
-import java.util.UUID
 import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,6 +81,24 @@ fun KanbanBoardPage(
     navController: NavController,
 ) {
     val projectId = "twY60Loioxs0UoSTuaia"
+
+    var selectedTabIndex by rememberSaveable { mutableIntStateOf(2) }
+    var showSheet by rememberSaveable { mutableStateOf(false) }
+
+
+    // (TÙY CHỌN) Tự mở lại sheet khi nhận result từ AddTeamMembersPage
+    val handle = navController.currentBackStackEntry?.savedStateHandle
+    val selectedIds by handle
+        ?.getLiveData<ArrayList<String>>("selected_members_ids")
+        ?.observeAsState()
+        ?: remember { mutableStateOf<ArrayList<String>?>(null) }
+
+    LaunchedEffect(selectedIds) {
+        selectedIds?.let {
+            handle?.remove<ArrayList<String>>("selected_members_ids")
+            showSheet = true                 // ← mở lại sheet khi quay về
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -116,7 +134,14 @@ fun KanbanBoardPage(
         ) {
             KanbanTopBar(projectId)
             Spacer(modifier = Modifier.height(16.dp))
-            KanbanTabRow(projectId)
+            KanbanTabRow(
+                projectId = projectId,
+                selectedTabIndex = selectedTabIndex,
+                onTabChange = { selectedTabIndex = it },
+                showSheet = showSheet,                 // ← boolean
+                setShowSheet = { showSheet = it },     // ← setter
+                navController = navController
+            )
         }
     }
 }
@@ -269,9 +294,15 @@ fun KanbanTopBar(
 }
 
 @Composable
-fun KanbanTabRow(projectId: String) {
-    var selectedTabIndex by remember { mutableStateOf(1) }
-    val tabs = listOf("Overview", "List", "Board", "Timeline", "Calendar", "Dashboard")
+fun KanbanTabRow(
+    projectId: String,
+    selectedTabIndex: Int,
+    onTabChange: (Int) -> Unit,
+    showSheet: Boolean,
+    setShowSheet: (Boolean) -> Unit,
+    navController: NavController
+) {
+    val tabs = listOf("Overview", "List", "DashBoard", "Timeline", "Calendar"/*, "Dashboard"*/)
 
     Column {
         ScrollableTabRow(
@@ -291,7 +322,7 @@ fun KanbanTabRow(projectId: String) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTabIndex == index,
-                    onClick = { selectedTabIndex = index },
+                    onClick = { onTabChange(index) },
                     text = {
                         Text(
                             text = title,
@@ -310,10 +341,15 @@ fun KanbanTabRow(projectId: String) {
         when (selectedTabIndex) {
             0 -> OverviewTab(projectId ?: "")
             1 -> ListTab(projectId ?: "")
-            2 -> BoardTab(projectId ?: "") // Kanban Board
+            2 -> BoardTab(
+                projectId = projectId,
+                showSheet = showSheet,
+                setShowSheet = setShowSheet,
+                navController = navController
+            ) // Kanban Board
             3 -> TimelineTab(projectId ?: "")
             4 -> CalendarTab()
-            5 -> DashboardTab()
+//            5 -> DashboardTab()
         }
     }
 }
@@ -321,11 +357,17 @@ fun KanbanTabRow(projectId: String) {
 @Composable
 fun BoardTab(
     projectId: String,
+    showSheet: Boolean,
+    setShowSheet: (Boolean) -> Unit,
     projectVM: ProjectViewModel = viewModel(),
     taskVM: TaskViewModel = viewModel(),
     taskActivityVM: TaskActivityViewModel = viewModel(),
     authVM: AuthViewModel = viewModel(),
+    navController: NavController,
 ) {
+
+    var addTaskType by rememberSaveable { mutableIntStateOf(-1) } // -1 = đóng
+
     val project by projectVM.selectedProject.collectAsState()
 
     val tasks by taskVM.tasks.collectAsState()
@@ -382,9 +424,6 @@ fun BoardTab(
         // Filter theo date
         if (selectedDateFilter.isNotEmpty()) {
             result = result.filter { task ->
-                Log.d("DateStart Filter", " ${task.dateStart}")
-                Log.d("hehee", "${getDateOnly(task.dateStart) == selectedDateFilter}")
-                Log.d("duma m", "${getDateOnly(task.dateStart)}")
                 getDateOnly(task.dateStart) == selectedDateFilter
 
             }
@@ -433,17 +472,44 @@ fun BoardTab(
         ) {
             item {
                 when (selectedStatusFilter) {
-                    "To do" -> KanbanColumn("To Do", toDoTask, projectId)
-                    "In Progress" -> KanbanColumn("In Progress", inProgressTask, projectId)
-                    "Done" -> KanbanColumn("Done", doneTask, projectId)
+                    "To do" -> KanbanColumn(
+                        title = "To Do",
+                        tasks = toDoTask,
+                        projectId = projectId,
+                        onAddTaskClick = { taskType -> addTaskType = taskType }
+                    )
+
+                    "In Progress" -> KanbanColumn(
+                        title = "In Progress",
+                        tasks = inProgressTask,
+                        projectId = projectId,
+                        onAddTaskClick = { taskType -> addTaskType = taskType }
+                    )
+
+                    "Done" -> KanbanColumn(
+                        title = "Done",
+                        tasks = doneTask,
+                        projectId = projectId,
+                        onAddTaskClick = { taskType -> addTaskType = taskType }
+                    )
+
                     else -> {
-                        KanbanColumn("To Do", toDoTask, projectId)
-                        KanbanColumn("In Progress", inProgressTask, projectId)
-                        KanbanColumn("Done", doneTask, projectId)
+                        KanbanColumn("To Do", toDoTask, projectId,onAddTaskClick = { taskType -> addTaskType = taskType })
+                        KanbanColumn("In Progress", inProgressTask, projectId,onAddTaskClick = { taskType -> addTaskType = taskType })
+                        KanbanColumn("Done", doneTask, projectId,onAddTaskClick = { taskType -> addTaskType = taskType })
                     }
                 }
             }
         }
+    }
+    if (addTaskType != -1) {
+        CreateNewTaskBottomSheet(
+            navController = navController,
+            showSheet = true,
+            projectId = projectId,
+            taskType = addTaskType,
+            onDismiss = { addTaskType = -1 }
+        )
     }
 }
 
@@ -456,7 +522,7 @@ fun KanbanFilterRow(
     var showDatePicker by remember { mutableStateOf(false) }
     var selectedTaskStatus by remember { mutableStateOf("All Tasks") }
     val context = LocalContext.current
-    
+
     // Trigger callback với ngày hiện tại khi component được load lần đầu
     LaunchedEffect(Unit) {
         val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
@@ -662,17 +728,18 @@ fun KanbanFilterRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KanbanColumn(
-    title: String, tasks: List<Task>, projectId: String,
-    navController: NavController = rememberNavController()
+    title: String,
+    tasks: List<Task>,
+    projectId: String,
+    onAddTaskClick: (Int) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
-    var showSheet by remember { mutableStateOf(false) }
     var deleteAble by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth() // Thay đổi từ width(280.dp) thành fillMaxWidth()
-            .wrapContentHeight(), // Thay đổi từ fillMaxHeight() để phù hợp với nội dung
+            .wrapContentHeight().padding(bottom = 4.dp), // Thay đổi từ fillMaxHeight() để phù hợp với nội dung
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
@@ -741,13 +808,21 @@ fun KanbanColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 tasks.forEach { task ->
-                    KanbanTaskCard(task, deleteAble,projectId)
+                    KanbanTaskCard(task, deleteAble, projectId)
                 }
 
 
                 // Add Task Button
                 OutlinedButton(
-                    onClick = { showSheet = true },
+                    onClick = {
+                        val type = when (title) {
+                            "To Do" -> 1
+                            "In Progress" -> 2
+                            "Done" -> 3
+                            else -> 0
+                        }
+                        onAddTaskClick(type)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -769,28 +844,15 @@ fun KanbanColumn(
                     )
                 }
             }
-
-            CreateNewTaskBottomSheet(
-                navController = navController,
-                showSheet = showSheet,
-                projectId = projectId,
-                taskType = when (title) {
-                    "To Do" -> 1
-                    "In Progress" -> 2
-                    "Done" -> 3
-                    else -> 0
-                },
-                onDismiss = { showSheet = false },
-                )
         }
     }
 }
 
 @Composable
 fun KanbanTaskCard(
-    task: Task, displayDelete: Boolean,projectId : String,
+    task: Task, displayDelete: Boolean, projectId: String,
     taskVM: TaskViewModel = viewModel(),
-    taskActivityVM: TaskActivityViewModel= viewModel(),
+    taskActivityVM: TaskActivityViewModel = viewModel(),
     authVM: AuthViewModel = viewModel()
 ) {
     val currentUser by authVM.currentUser.observeAsState()
@@ -807,18 +869,29 @@ fun KanbanTaskCard(
                 showDialog = false
                 taskVM.deleteTask(task.id)
 
-                val newTaskActivity = TaskActivity(
-                    id = "task_${UUID.randomUUID()}",
-                    taskId = task.id,
-                    notifiedUserIds = emptyList(),
-                    action = "${currentUser?.name ?:""} has removed a task",
-                    timestamp = formatDate(LocalDateTime.now()),
-                    note = "${currentUser?.name ?:""} has removed a new task",
-                    worker = currentUser?.userId ?: "",
-                    projectId = projectId
-                )
+                // Create activity with automatic notifications
+                CoroutineScope(Dispatchers.Main).launch {
+                    val result = NotificationManager.createActivityWithNotifications(
+                        projectId = projectId,
+                        taskId = task.id,
+                        action = "TASK_REMOVED",
+                        note = "${currentUser?.name ?: ""} has removed a task",
+                        worker = currentUser?.userId ?: "",
+                        additionalUserIds = listOf(
+                            "uFn2a1izcMOmQ6V61tVqRraZm823".trim(),
+                            "YOpq7Gc2IMXtaN0AaqrylDtCzuP2".trim()
+                        )
+                    )
 
-                taskActivityVM.addActivity(newTaskActivity)
+                    if (result.isSuccess) {
+                        Log.d("KanbanBoard", "Activity created with notifications")
+                    } else {
+                        Log.e(
+                            "KanbanBoard",
+                            "Failed to create activity: ${result.exceptionOrNull()?.message}"
+                        )
+                    }
+                }
             }
         )
     }
@@ -996,7 +1069,7 @@ fun KanbanTaskCard(
 }
 
 // Data Models
-data class KanbanColumn(
+data class KanbanColumn1(
     val id: String,
     val title: String,
     val tasks: List<KanbanTask>
@@ -1014,7 +1087,7 @@ data class KanbanTask(
 
 // Sample Data
 val kanbanColumns = listOf(
-    KanbanColumn(
+    KanbanColumn1(
         id = "todo",
         title = "To do",
         tasks = listOf(
@@ -1038,7 +1111,7 @@ val kanbanColumns = listOf(
             )
         )
     ),
-    KanbanColumn(
+    KanbanColumn1(
         id = "doing",
         title = "Doing",
         tasks = listOf(
@@ -1070,7 +1143,7 @@ val kanbanColumns = listOf(
             )
         )
     ),
-    KanbanColumn(
+    KanbanColumn1(
         id = "done",
         title = "Done",
         tasks = listOf(
@@ -1094,7 +1167,7 @@ val kanbanColumns = listOf(
             )
         )
     ),
-    KanbanColumn(
+    KanbanColumn1(
         id = "untitled",
         title = "Untitled section",
         tasks = listOf()
@@ -1207,7 +1280,7 @@ fun OverviewTab(
                 val progress = (taskCompleted.toFloat() / taskTotal.toFloat()) * 100
                 // Progress Bar
                 Text(
-                    text = "Overall Progress: ${progress}%",
+                    text = "Overall Progress: ${String.format("%.2f", progress)}%",
                     style = MaterialTheme.typography.displayMedium.copy(
                         fontSize = 16.sp,
                         fontFamily = FontFamily(Font(R.font.monasan_sb))
@@ -1257,7 +1330,7 @@ fun OverviewTab(
                             user?.name ?: "Unknown",
                             taskAc.action,
                             taskAc.note,
-                            taskAc.timestamp,
+                            taskAc.timestamp.formatToReadableTime(),
                             kanbanMemberInitials[safeUserIndex % kanbanMemberInitials.size],
                             kanbanMemberColors[safeUserIndex % kanbanMemberColors.size]
                         )
@@ -1272,43 +1345,65 @@ fun OverviewTab(
                         }
                     }
                 } else {
-                    // Activity Items
-                    ActivityItem(
-                        "John Doe",
-                        "added a new task",
-                        "Contact client for outline",
-                        "2 hours ago",
-                        kanbanMemberInitials[0],
-                        kanbanMemberColors[0]
-                    )
-                    Divider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        thickness = 0.5.dp,
-                        color = Color.LightGray
-                    )
 
-                    ActivityItem(
-                        "Maria Smith",
-                        "completed",
-                        "Create wireframes for homepage",
-                        "Yesterday",
-                        kanbanMemberInitials[1],
-                        kanbanMemberColors[1]
-                    )
-                    Divider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        thickness = 0.5.dp,
-                        color = Color.LightGray
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.emp),
+                            contentDescription = "Profile",
+                            tint = Color.Black,
+                            modifier = Modifier.size(50.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    ActivityItem(
-                        "Alex Kim",
-                        "commented on",
-                        "Implement user authentication",
-                        "2 days ago",
-                        kanbanMemberInitials[2],
-                        kanbanMemberColors[2]
-                    )
+                        Text(
+                            text = "No Recent Activities",
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontSize = 20.sp,
+                                fontFamily = FontFamily(Font(R.font.monasan_sb))
+                            ),
+                            color = Color.Black
+                        )
+                    }
+//                    // Activity Items
+//                    ActivityItem(
+//                        "John Doe",
+//                        "added a new task",
+//                        "Contact client for outline",
+//                        "2 hours ago",
+//                        kanbanMemberInitials[0],
+//                        kanbanMemberColors[0]
+//                    )
+//                    Divider(
+//                        modifier = Modifier.padding(vertical = 12.dp),
+//                        thickness = 0.5.dp,
+//                        color = Color.LightGray
+//                    )
+//
+//                    ActivityItem(
+//                        "Maria Smith",
+//                        "completed",
+//                        "Create wireframes for homepage",
+//                        "Yesterday",
+//                        kanbanMemberInitials[1],
+//                        kanbanMemberColors[1]
+//                    )
+//                    Divider(
+//                        modifier = Modifier.padding(vertical = 12.dp),
+//                        thickness = 0.5.dp,
+//                        color = Color.LightGray
+//                    )
+//
+//                    ActivityItem(
+//                        "Alex Kim",
+//                        "commented on",
+//                        "Implement user authentication",
+//                        "2 days ago",
+//                        kanbanMemberInitials[2],
+//                        kanbanMemberColors[2]
+//                    )
                 }
 
             }
@@ -1521,7 +1616,7 @@ fun TimelineTab(
             modifier = Modifier.padding(start = 16.dp)
         ) {
             items(displayTimeLine) { timeline ->
-                TimelineWeek(projectId,timeline )
+                TimelineWeek(projectId, timeline)
             }
         }
     }
@@ -1711,24 +1806,29 @@ fun ListTaskItem(
                 }
 
                 if (task.assignee != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(kanbanMemberColors[task.assignee.size % kanbanMemberColors.size])
-                            .border(1.dp, Color.White, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = kanbanMemberInitials[task.assignee.size % kanbanMemberInitials.size],
-                            color = Color.White,
-                            style = MaterialTheme.typography.displayMedium.copy(
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily(Font(R.font.monasan_sb))
-                            ),
-                        )
+                    task.assignee.forEach { userId ->
+                        if (user != null && user?.userId == userId) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(kanbanMemberColors[0 % kanbanMemberColors.size])
+                                    .border(1.dp, Color.White, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = user?.name?.take(2)?.uppercase() ?:"",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily(Font(R.font.monasan_sb))
+                                    )
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
                     }
-                }else {
+                } else {
                     Box(
                         modifier = Modifier
                             .size(28.dp)
@@ -1781,7 +1881,7 @@ fun Int.toColor(): Color = when (this) {
 
 @Composable
 fun TimelineWeek(
-    projectId : String ,
+    projectId: String,
     timeline: TimeLine,
     timeLineVM: TimeLineViewModel = viewModel(),
     authVM: AuthViewModel = viewModel(),
@@ -1875,17 +1975,33 @@ fun TimelineWeek(
                             )
                             timeLineVM.updateTimeLine(updatedTimeLine)
 
-                            val newActivityTask = TaskActivity(
-                                id = "task_${UUID.randomUUID()}",
-                                taskId = "",
-                                notifiedUserIds = emptyList(),
-                                action = "${currentUser?.name ?:""} has add new event for time line",
-                                timestamp = formatDate2(LocalDateTime.now()),
-                                note = "${currentUser?.name ?:""}  has add new event for time line",
-                                worker = currentUser?.userId ?: "",
-                                projectId = projectId
-                            )
-                            taskActivityViewModel.addActivity(newActivityTask)
+                            // Create activity with automatic notifications
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val result = NotificationManager.createActivityWithNotifications(
+                                    projectId = projectId,
+                                    taskId = "",
+                                    action = "TIMELINE_EVENT_ADDED",
+                                    note = "${currentUser?.name ?: ""} has added a new event for timeline",
+                                    worker = currentUser?.userId ?: "",
+                                    additionalUserIds = listOf(
+                                        "uFn2a1izcMOmQ6V61tVqRraZm823".trim(),
+                                        "YOpq7Gc2IMXtaN0AaqrylDtCzuP2".trim(),
+                                        "uFn2a1izcMOmQ6V61tVqRraZm823".trim()
+                                    )
+                                )
+
+                                if (result.isSuccess) {
+                                    Log.d(
+                                        "KanbanBoard",
+                                        "Timeline activity created with notifications"
+                                    )
+                                } else {
+                                    Log.e(
+                                        "KanbanBoard",
+                                        "Failed to create timeline activity: ${result.exceptionOrNull()?.message}"
+                                    )
+                                }
+                            }
 
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -2171,17 +2287,17 @@ fun CalendarTab() {
     }
 }
 
-@Composable
-fun DashboardTab() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = 16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("Dashboard View Coming Soon")
-    }
-}
+//@Composable
+//fun DashboardTab() {
+//    Box(
+//        modifier = Modifier
+//            .fillMaxSize()
+//            .padding(top = 16.dp),
+//        contentAlignment = Alignment.Center
+//    ) {
+//        Text("Dashboard View Coming Soon")
+//    }
+//}
 
 @Preview(showBackground = true)
 @Composable
@@ -2191,5 +2307,23 @@ fun KanbanBoardPagePreview() {
     }
 }
 
+// Extension function to format Firebase Timestamp to readable string
+fun Timestamp?.formatToReadableTime(): String {
+    if (this == null) return "Unknown time"
 
+    val now = Timestamp.now()
+    val diffInSeconds = now.seconds - this.seconds
 
+    return when {
+        diffInSeconds < 60 -> "Just now"
+        diffInSeconds < 3600 -> "${diffInSeconds / 60} minutes ago"
+        diffInSeconds < 86400 -> "${diffInSeconds / 3600} hours ago"
+        diffInSeconds < 2592000 -> "${diffInSeconds / 86400} days ago"
+        else -> {
+            val date = java.util.Date(this.seconds * 1000)
+            val formatter =
+                java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
+            formatter.format(date)
+        }
+    }
+}

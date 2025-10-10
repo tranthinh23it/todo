@@ -180,13 +180,15 @@ fun AddTeamMembersPage(
         }
         Spacer(modifier = Modifier.weight(1f))
         ButtonSignUp("Confirm", onClick = {
+            val ids = ArrayList(selectedMembers.map { it.userId }) // đổi .id theo model của bạn
             navController.previousBackStackEntry
                 ?.savedStateHandle
-                ?.set("selected_members", selectedMembers.toList())
-            Log.d("AddTeamMembersPage",  " Send infor to previous page: $selectedMembers")
+                ?.set("selected_members_ids", ids)
 
-
+            Log.d("AddTeamMembersPage", "Send ids to previous page: $ids")
+            navController.popBackStack()
         }, modifier = Modifier)
+
     }
 }
 

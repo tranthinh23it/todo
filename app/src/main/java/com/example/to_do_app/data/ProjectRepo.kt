@@ -11,7 +11,16 @@ class ProjectRepo {
 
     suspend fun addProject(project: Project): Result<Unit> {
         return try {
-            collection.document(project.id).set(project).await()
+            // Nếu id trống thì tạo mới
+            val docRef = if (project.id.isBlank()) {
+                collection.document() // Firestore tạo ID mới
+            } else {
+                collection.document(project.id)
+            }
+
+            val projectWithId = project.copy(id = docRef.id)
+
+            docRef.set(projectWithId).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("ProjectRepo", "Failed to add project: ", e)

@@ -1,6 +1,8 @@
-import androidx.compose.foundation.MarqueeSpacing
+package com.example.to_do_app.presentation.screens.user
+
+
+import CreateNewTaskPersonal
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.to_do_app.R
 import com.example.to_do_app.ui.theme.To_do_appTheme
-import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.DayOfWeek
 import java.time.LocalTime
@@ -39,27 +40,24 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.isActive
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.to_do_app.domain.Task
+import android.util.Log
+import androidx.compose.ui.res.painterResource
 import com.example.to_do_app.presentation.viewmodels.AuthViewModel
 import com.example.to_do_app.presentation.viewmodels.TaskViewModel
+import com.example.to_do_app.util.Screens
 import com.example.to_do_app.util.TaskPriority
 import com.example.to_do_app.util.TaskStatus
-import kotlin.math.roundToInt
-import kotlin.math.max
-import kotlin.math.min
 import java.time.LocalDateTime
 
 
@@ -109,6 +107,8 @@ fun CalendarPage(
     authVM : AuthViewModel = viewModel(),
     navController: NavController,
 ) {
+    Log.d("CalendarPage", "=== CalendarPage LOADED ===")
+    Log.d("CalendarPage", "navController: $navController")
 
     val currentUser by authVM.currentUser.observeAsState()
     LaunchedEffect(Unit) {
@@ -189,7 +189,8 @@ fun CalendarPage(
                 isExpanded = isExpanded,
                 onExpandToggle = { isExpanded = !isExpanded },
                 isGridLayout = isLayoutGrid,
-                onGridLayout = { isLayoutGrid = !isLayoutGrid }
+                onGridLayout = { isLayoutGrid = !isLayoutGrid },
+                navController = navController
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -263,7 +264,8 @@ fun CalendarHeader(
     isExpanded: Boolean,
     onExpandToggle: () -> Unit,
     isGridLayout: Boolean,
-    onGridLayout: () -> Unit
+    onGridLayout: () -> Unit,
+    navController: NavController
 ) {
     Row(
         modifier = Modifier
@@ -289,6 +291,18 @@ fun CalendarHeader(
             IconButton(onClick = onExpandToggle) {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Toggle calendar",
+                    tint = Color.Gray
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = {
+                navController.navigate(Screens.MyTaskPage.route)
+            }) {
+                Icon(
+//                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    painter = painterResource(R.drawable.calendar),
                     contentDescription = "Toggle calendar",
                     tint = Color.Gray
                 )
@@ -764,7 +778,7 @@ fun CalendarPagePreview() {
     }
 }
 
-val sampleTasks = listOf(
+val sampleTasks1 = listOf(
     Task(
         id = "task_001",
         title = "Thiết kế giao diện trang chủ",

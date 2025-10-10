@@ -84,7 +84,7 @@ fun MyAccountPage(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Settings List
-                SettingsSection()
+                SettingsSection(navController)
 
                 Spacer(modifier = Modifier.height(80.dp)) // Bottom padding for navigation
             }
@@ -212,7 +212,7 @@ fun AccountProfileCard(
 
 @Composable
 fun SettingsSection(
-    navController: NavController = rememberNavController()
+    navController: NavController
 ) {
     Card(
         modifier = Modifier
@@ -228,7 +228,10 @@ fun SettingsSection(
             SettingsItem(icon = Icons.Default.Settings, title = "Preferences")
             SettingsItem(icon = Icons.Default.DateRange, title = "Calendar & Time", onClick = {
                 navController.navigate(Screens.CalenderTimePage.route)
+//                navController.navigate("calendarPage")
+
             })
+
             SettingsItem(icon = Icons.Default.Notifications, title = "Reminder")
             SettingsItem(
                 icon = Icons.Default.Notifications,

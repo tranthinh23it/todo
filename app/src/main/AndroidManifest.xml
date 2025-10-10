@@ -8,6 +8,12 @@
 
     <!-- Quyền cho Android 13 trở lên -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" android:maxSdkVersion="33" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- FCM Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:allowBackup="true"
@@ -20,16 +26,36 @@
         android:theme="@style/Theme.To_do_app"
         tools:targetApi="31">
 
+        <!-- FCM Service -->
+        <service
+            android:name="com.example.to_do_app.services.MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.To_do_app">
+
+            <!-- Main Launcher Intent Filter -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Deep Link Intent Filter -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="todoapp" />
+            </intent-filter>
         </activity>
+
     </application>
 
 </manifest>

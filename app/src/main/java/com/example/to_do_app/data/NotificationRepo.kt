@@ -61,7 +61,8 @@ class NotificationRepo {
 
     suspend fun getNotificationsByRecipient(recipient: String): List<Notification> {
         return try {
-            val snapshot = collection.whereEqualTo("recipient", recipient).get().await()
+            Log.d("NotificationRepo", "Fetching notifications for recipient: $recipient")
+            val snapshot = collection.whereEqualTo("recipientId", recipient).get().await()
             snapshot.documents.mapNotNull { it.toObject(Notification::class.java) }
         } catch (e: Exception) {
             Log.e("NotificationRepo", "Failed to get notifications by recipient: ", e)

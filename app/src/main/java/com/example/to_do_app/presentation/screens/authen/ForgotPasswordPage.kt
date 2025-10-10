@@ -30,7 +30,7 @@ import com.example.to_do_app.ui.theme.To_do_appTheme
 
 @Composable
 fun ForgotPasswordPage() {
-    var email by remember { mutableStateOf("andrew.ainsley@yourdomain.com") }
+    var email by remember { mutableStateOf("example-email@gmail.com") }
 
     Scaffold(
         topBar = {
@@ -77,7 +77,8 @@ fun ForgotPasswordPage() {
                 value = email,
                 onValueChange = { email = it },
                 label = "andrew.ainsley@yourdomain.com",
-                leadingIcon = painterResource(R.drawable.mail)
+                leadingIcon = painterResource(R.drawable.mail),
+
             )
 
             Spacer(modifier = Modifier.weight(1f))

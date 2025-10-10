@@ -1,6 +1,7 @@
 package com.example.to_do_app.presentation.screens.task
 
 import BottomNavigation
+import CreateNewTaskPersonal
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -18,7 +19,6 @@ import androidx.compose.material.icons.filled.Person
 //import androidx.compose.material.icons.filled.ThreeDRotation
 //import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.MoreVert
 //import androidx.compose.material.icons.filled.Business
 //import androidx.compose.material.icons.filled.Chat
@@ -52,6 +52,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.collectAsState
@@ -68,10 +69,13 @@ import com.example.to_do_app.presentation.viewmodels.TaskViewModel
 import kotlin.math.roundToInt
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
 import com.example.to_do_app.presentation.screens.getPriorityColor
+import com.example.to_do_app.presentation.screens.groups.kanbanMemberColors
+import com.example.to_do_app.presentation.screens.groups.kanbanMemberInitials
 import com.example.to_do_app.util.Screens
 import com.example.to_do_app.util.TaskStatus
 import formatDate1
@@ -81,10 +85,11 @@ import java.time.YearMonth
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyTaskPage(
-    navController: NavController = rememberNavController(),
+    navController: NavController ,
 ) {
     // Cho phép kéo thả FAB
     var fabOffset by remember { mutableStateOf(Offset.Zero) }
+    var showSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = Color(0xFFF5F5F5),
@@ -96,7 +101,9 @@ fun MyTaskPage(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { /* TODO */ },
+                onClick = {
+                    showSheet = true
+                },
                 containerColor = Color(0xFF5B5EF4),
                 modifier = Modifier
                     .offset { IntOffset(fabOffset.x.roundToInt(), fabOffset.y.roundToInt()) }
@@ -114,8 +121,24 @@ fun MyTaskPage(
                 )
             }
         }
+
+
         // snackbarHost = { SnackbarHost(remember { SnackbarHostState() }) }
     ) { innerPadding ->
+
+        CreateNewTaskPersonal(
+            navController = navController,
+            showSheet = showSheet,
+            projectId = "",
+            taskType = when ("To Do") {
+                "To Do" -> 1
+                "In Progress" -> 2
+                "Done" -> 3
+                else -> 0
+            },
+            onDismiss = { showSheet = false },
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -149,7 +172,7 @@ fun MyTaskPage(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     // Task List Section
-                    TaskListSection()
+                    TaskListSection(navController = navController)
                 }
             }
         }
@@ -293,7 +316,7 @@ fun ProgressSection(
                         tint = Color.Gray
                     )
                     Text(
-                        text = "6",
+                        text = todayTasks.size.toString(),
                         fontWeight = FontWeight.Bold,
                         fontSize = 24.sp
                     )
@@ -302,6 +325,29 @@ fun ProgressSection(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 val todayTask = todayTasks.shuffled().take(4)
+                if( todayTask.isEmpty()){
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.emptybox),
+                            contentDescription = "Profile",
+                            tint = Color.Black,
+                            modifier = Modifier.size(50.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "No Task In Process",
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontSize = 14.sp,
+                                fontFamily = FontFamily(Font(R.font.monasan_sb))
+                            ),
+                            color = Color.Black
+                        )
+                    }
+                }
                 todayTask.forEach { task ->
                     TaskItemWithIcon(
                         task.title,
@@ -310,10 +356,10 @@ fun ProgressSection(
                     )
                 }
                 // Task items with colored indicators
-                TaskItemWithIcon("Read a Book", Color.Red, Icons.Default.Phone)
-                TaskItemWithIcon("Weekly Meet", Color.Gray, Icons.Default.Person)
-                TaskItemWithIcon("3D Designing", Color(0xFFFFD700), Icons.Default.Place)
-                TaskItemWithIcon("Meeting With...", Color.Black, Icons.Default.PlayArrow)
+//                TaskItemWithIcon("Read a Book", Color.Red, Icons.Default.Phone)
+//                TaskItemWithIcon("Weekly Meet", Color.Gray, Icons.Default.Person)
+//                TaskItemWithIcon("3D Designing", Color(0xFFFFD700), Icons.Default.Place)
+//                TaskItemWithIcon("Meeting With...", Color.Black, Icons.Default.PlayArrow)
             }
         }
 
@@ -434,7 +480,8 @@ fun TaskItemWithIcon(text: String, color: Color, icon: ImageVector) {
 @Composable
 fun TaskListSection(
     taskVM: TaskViewModel = viewModel(),
-    userVM: AuthViewModel = viewModel()
+    userVM: AuthViewModel = viewModel(),
+    navController: NavController
 ) {
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
 //    Log.d("selectedDate", "$selectedDate")
@@ -465,8 +512,12 @@ fun TaskListSection(
                 ),
             )
             Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "More Options"
+                painter = painterResource(R.drawable.calendar),
+//                imageVector = Icons.Default.MoreVert,
+                contentDescription = "More Options",
+                modifier = Modifier.size(24.dp).clickable {
+                    navController.navigate(Screens.CalenderPage.route)
+                },
             )
         }
 
@@ -482,6 +533,7 @@ fun TaskListSection(
         if (filterTask != null) {
             filterTask.forEach { task ->
                 EventCard(
+                    id = task.id,
                     title = task.title,
                     type = task.description,
                     time = " ${extractTime(task.dateStart)} - ${extractTime(task.dateDue)}",
@@ -492,6 +544,7 @@ fun TaskListSection(
         } else {
             // Event Cards
             EventCard(
+                id = "id",
                 title = "Townhall meeting online",
                 type = "Work Event",
                 time = "7:00 am - 9:00 am",
@@ -500,6 +553,7 @@ fun TaskListSection(
 
             Spacer(modifier = Modifier.height(12.dp))
             EventCard(
+                id = "id",
                 title = "Townhall meeting online",
                 type = "Work Event",
                 time = "7:00 am - 9:00 am",
@@ -508,6 +562,7 @@ fun TaskListSection(
             Spacer(modifier = Modifier.height(12.dp))
 
             EventCard(
+                id = "id",
                 title = "Townhall meeting online",
                 type = "Work Event",
                 time = "7:00 am - 9:00 am",
@@ -758,7 +813,16 @@ fun DayItem(
 }
 
 @Composable
-fun EventCard(title: String, type: String, time: String, color: Color) {
+fun EventCard(id: String,title: String, type: String, time: String, color: Color,
+              taskVM: TaskViewModel = viewModel(),
+
+              ){
+
+    val task by taskVM.selectedTask.collectAsState()
+    LaunchedEffect(id) {
+        taskVM.getTaskById(id)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -810,15 +874,52 @@ fun EventCard(title: String, type: String, time: String, color: Color) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Participant avatars
-                    Row {
-                        for (i in 0..3) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .offset(x = (-8 * i).dp)
-                                    .clip(CircleShape)
-                                    .background(Color.Gray)
-                            )
+                    if(task?.assignee.isNullOrEmpty()){
+                        Row {
+                            for (i in 0..3) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .offset(x = (-8 * i).dp)
+                                        .clip(CircleShape)
+                                        .background(Color.Gray)
+                                )
+                            }
+                        }
+                    }else{
+                        Row {
+                            task?.assignee?.take(4)?.forEachIndexed { index, imgUrl ->
+                               if(imgUrl.isEmpty()){
+                                   Box(
+                                       modifier = Modifier
+                                           .size(24.dp)
+                                           .clip(CircleShape)
+                                           .background(kanbanMemberColors[task!!.assignee.size % kanbanMemberColors.size])
+                                           .border(1.dp, Color.White, CircleShape),
+                                       contentAlignment = Alignment.Center
+                                   ) {
+                                       Text(
+                                           text = kanbanMemberInitials[task!!.assignee.size % kanbanMemberInitials.size],
+                                           color = Color.White,
+                                           style = MaterialTheme.typography.displayMedium.copy(
+                                               fontSize = 10.sp,
+                                               fontFamily = FontFamily(Font(R.font.monasan_sb))
+                                           ),
+                                       )
+                                   }
+                               }else
+                               {
+                                   AsyncImage(
+                                       model = imgUrl,
+                                       contentDescription = null,
+                                       contentScale = ContentScale.Crop,
+                                       modifier = Modifier
+                                           .size(24.dp)
+                                           .offset(x = (-8 * index).dp)
+                                           .clip(CircleShape)
+                                   )
+                               }
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.width(16.dp))
@@ -851,7 +952,7 @@ fun EventCard(title: String, type: String, time: String, color: Color) {
 @Preview
 fun MyTaskPagePreview() {
     To_do_appTheme {
-        MyTaskPage()
+//        MyTaskPage()
     }
 }
 

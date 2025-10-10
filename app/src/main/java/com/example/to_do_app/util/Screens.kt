@@ -2,6 +2,7 @@ package com.example.to_do_app.util
 
 sealed class Screens(val route : String){
     object StartPage : Screens("start_page")
+    object OnboardingPage : Screens("onboarding_page")
     object CalenderTimePage : Screens("calender_time_page")
     object HomePage : Screens("home_page")
     object KanbanBoardPage : Screens("kanban_board_page/{projectId}"){
@@ -15,6 +16,7 @@ sealed class Screens(val route : String){
     }
 
 
+    object CalenderPage : Screens("calender_page")
     object GroupTasksPage : Screens("group_tasks_page")
     object MyAccountPage : Screens("my_account_page")
     object MyTaskPage : Screens("my_task_page")

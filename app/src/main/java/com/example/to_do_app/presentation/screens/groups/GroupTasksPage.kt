@@ -6,28 +6,40 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -45,45 +57,59 @@ import com.example.to_do_app.presentation.viewmodels.ProjectViewModel
 import com.example.to_do_app.presentation.viewmodels.TeamViewModel
 import com.example.to_do_app.ui.theme.To_do_appTheme
 import com.example.to_do_app.util.Screens
+import kotlinx.coroutines.delay
+import java.time.LocalDateTime
+import java.util.UUID
 import kotlin.math.roundToInt
 
 @Composable
-fun GroupProjectPage(
+fun GroupTasksPage(
     navController: NavController,
-    teamVM : TeamViewModel = viewModel(),
-    authVM : AuthViewModel = viewModel(),
-    projectVM : ProjectViewModel = viewModel()
+    teamVM: TeamViewModel = viewModel(),
+    authVM: AuthViewModel = viewModel(),
+    projectVM: ProjectViewModel = viewModel()
 ) {
-
     val currentUser by authVM.currentUser.observeAsState()
-    LaunchedEffect(Unit){
+    LaunchedEffect(Unit) {
         authVM.fetchAndSetCurrentUser()
     }
 
     val team by teamVM.selectedTeam.collectAsState()
-    LaunchedEffect(String){
+    LaunchedEffect(String) {
         teamVM.getTeamById(currentUser?.team ?: "")
     }
-    val members = team?.members?.size
 
     val projects by projectVM.projects.collectAsState()
     LaunchedEffect(String) {
         projectVM.getProjectsByTeamId(team?.id ?: "")
     }
-    var fabOffset by remember { mutableStateOf(Offset.Zero) }
 
+    var fabOffset by remember { mutableStateOf(Offset.Zero) }
+    var selectedTab by remember { mutableStateOf(0) }
+    var editingId by remember { mutableStateOf<String?>(null) }
+
+    // Track ID của item mới được tạo
+    var newlyCreatedId by remember { mutableStateOf<String?>(null) }
+
+    // Auto-edit item mới ngay khi nó xuất hiện trong list
+    LaunchedEffect(projects, newlyCreatedId) {
+        newlyCreatedId?.let { newId ->
+            // Kiểm tra item mới đã có trong projects chưa
+            if (projects.any { it.id == newId }) {
+                delay(100) // Delay nhẹ để UI update
+                editingId = newId
+                newlyCreatedId = null // Reset sau khi set
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             CategoryTopAppBar(
                 text = "Group Project",
-                onBackClick = {
-                    // TODO: Handle back navigation
-                },
-                iconPainter =  painterResource(R.drawable.setting),
-                onClick = {
-                    // TODO: Handle settings click
-                }
+                onBackClick = { navController.popBackStack() },
+                iconPainter = painterResource(R.drawable.setting),
+                onClick = { /* TODO */ }
             )
         },
         bottomBar = {
@@ -92,13 +118,29 @@ fun GroupProjectPage(
         containerColor = Color(0xFFF5F5F5),
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { /* TODO */ },
+                onClick = {
+                    val newId = UUID.randomUUID().toString()
+                    val newProject = Project(
+                        id = newId,
+                        name = "", // Empty name để trigger auto-edit
+                        description = " ",
+                        dateStart = LocalDateTime.now().toString(),
+                        dateEnd = "",
+                        priority = TaskPriority.MEDIUM,
+                        status = TaskStatus.PENDING,
+                        members = listOf(),
+                        progress = 0f,
+                        team = team?.id ?: ""
+                    )
+                    newlyCreatedId = newId // Set ID trước khi add
+                    projectVM.addProject(newProject)
+                },
                 containerColor = Color(0xFF5B5EF4),
                 modifier = Modifier
                     .offset { IntOffset(fabOffset.x.roundToInt(), fabOffset.y.roundToInt()) }
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
-                            change.consume() // tránh propagate
+                            change.consume()
                             fabOffset += dragAmount
                         }
                     }
@@ -115,78 +157,338 @@ fun GroupProjectPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-//                .padding(horizontal = 16.dp)
         ) {
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Top Bar
-//            GroupTopBar()
-                Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column {
+                    GroupInfoSection()
 
-                // Main Content Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White)
-                ) {
-                    Column(
-//                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        // Group Info
-                        GroupInfoSection()
-//                        Spacer(modifier = Modifier.height(16.dp))
+                    FilterTabs(
+                        selectedTabIndex = selectedTab,
+                        onTabSelected = { selectedTab = it }
+                    )
 
-                        // Filter Tabs
-                        FilterTabs()
-                        Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                        // Task List
-                        GroupTasksList(tasks = projects, navController)
+                    val filterProjects = projects.filter { project ->
+                        when (selectedTab) {
+                            0 -> true
+                            1 -> project.status == TaskStatus.PENDING
+                            2 -> project.status == TaskStatus.COMPLETED
+                            3 -> project.status == TaskStatus.OVERDUE
+                            else -> true
+                        }
                     }
+
+                    GroupTasksList(
+                        tasks = filterProjects,
+                        navController = navController,
+                        editingId = editingId,
+                        onEditDone = { editingId = null },
+                        onRequestEdit = { id -> editingId = id }
+                    )
                 }
+            }
         }
     }
 }
 
 @Composable
-fun GroupTopBar() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { /* TODO: Navigate back */ }) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Back"
-                    )
-                }
-                Text(
-                    text = "Group Projects",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+fun GroupTasksList(
+    tasks: List<Project>,
+    navController: NavController,
+    editingId: String?,
+    onEditDone: () -> Unit,
+    onRequestEdit: (String) -> Unit,
+    projectVM: ProjectViewModel = viewModel()
+) {
+    // FIX: Thêm LazyListState để control scroll
+    val listState = rememberLazyListState()
+
+    // Scroll đến item đang edit với smooth animation
+    LaunchedEffect(editingId) {
+        editingId?.let { id ->
+            val index = tasks.indexOfFirst { it.id == id }
+            if (index >= 0) {
+                delay(150) // Delay để LazyColumn update
+                listState.animateScrollToItem(
+                    index = index,
+                    scrollOffset = -100 // Scroll thêm một chút để item không bị che
                 )
             }
-            
-            Row {
-                IconButton(onClick = { /* TODO */ }) {
-                    Icon(   
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search"
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 16.dp)
+    ) {
+        items(
+            items = tasks,
+            key = { it.id }
+        ) { project ->
+            GroupTaskItem(
+                project = project,
+                isEditable = editingId == project.id,
+                onNameChange = { newName ->
+                    projectVM.updateProject(project.copy(name = newName))
+                },
+                onFinishEditing = onEditDone,
+                onClickListener = { onRequestEdit(project.id) }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupTaskItem(
+    project: Project,
+    isEditable: Boolean = false,
+    onNameChange: (String) -> Unit = {},
+    onFinishEditing: () -> Unit = {},
+    onClickListener: () -> Unit = {}
+) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var text by rememberSaveable(project.id) { mutableStateOf(project.name) }
+
+    // Sync text với project.name khi không edit
+    LaunchedEffect(project.name, isEditable) {
+        if (!isEditable) {
+            text = project.name
+        }
+    }
+
+    // FIX: Đơn giản hóa focus logic - tăng delay cho stable
+    LaunchedEffect(isEditable) {
+        if (isEditable) {
+            text = project.name
+            delay(400) // Tăng delay để scroll + render hoàn thành
+            try {
+                focusRequester.requestFocus()
+                delay(150) // Delay trước khi show keyboard
+                keyboardController?.show()
+            } catch (e: Exception) {
+                Log.e("GroupTaskItem", "Focus failed: ${e.message}")
+            }
+        } else {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        }
+    }
+
+    fun commitIfChanged() {
+        val trimmed = text.trim()
+        if (trimmed.isNotEmpty() && trimmed != project.name) {
+            onNameChange(trimmed)
+        }
+        onFinishEditing()
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .then(
+                if (isEditable) {
+                    Modifier // Không có gesture khi đang edit
+                } else {
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(onTap = { onClickListener() })
+                    }
+                }
+            ),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = when (project.priority) {
+                TaskPriority.HIGH -> Color(0xFFFFF0F0)
+                TaskPriority.MEDIUM -> Color(0xFFFFF8E1)
+                TaskPriority.LOW -> Color(0xFFE8F5E9)
+            }
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    if (isEditable) {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            singleLine = true,
+                            placeholder = { Text("Enter project name") },
+                            textStyle = MaterialTheme.typography.displayMedium.copy(
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { focusState ->
+                                    if (!focusState.isFocused && text.trim() != project.name) {
+                                        commitIfChanged()
+                                    }
+                                },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    commitIfChanged()
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                }
+                            ),
+                            colors = TextFieldDefaults.outlinedTextFieldColors(
+                                focusedBorderColor = Color.Transparent,   // ẩn viền khi focus
+                                unfocusedBorderColor = Color.Transparent, // ẩn viền khi không focus
+                                disabledBorderColor = Color.Transparent,  // ẩn viền khi disabled
+                                errorBorderColor = Color.Transparent      // ẩn viền khi lỗi
+                            )
+                        )
+                    } else {
+                        Text(
+                            text = if (project.name.isBlank()) "Unnamed Project" else project.name,
+                            style = MaterialTheme.typography.displayMedium.copy(
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+
+                // Status Badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            when (project.status) {
+                                TaskStatus.COMPLETED -> Color(0xFFE6F7FF)
+                                TaskStatus.IN_PROGRESS -> Color(0xFFE0F2F1)
+                                TaskStatus.PENDING -> Color(0xFFFFF0F0)
+                                TaskStatus.OVERDUE -> Color(0xFFFFEBEE)
+                            }
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = when (project.status) {
+                            TaskStatus.COMPLETED -> "Completed"
+                            TaskStatus.IN_PROGRESS -> "In Progress"
+                            TaskStatus.PENDING -> "Pending"
+                            TaskStatus.OVERDUE -> "Overdue"
+                        },
+                        style = MaterialTheme.typography.displayMedium.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = when (project.status) {
+                            TaskStatus.COMPLETED -> Color(0xFF0288D1)
+                            TaskStatus.IN_PROGRESS -> Color(0xFF00897B)
+                            TaskStatus.PENDING -> Color(0xFFFF6D00)
+                            TaskStatus.OVERDUE -> Color(0xFFD32F2F)
+                        }
                     )
                 }
-                IconButton(onClick = { /* TODO */ }) {
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = project.description,
+                style = MaterialTheme.typography.displaySmall.copy(
+                    fontSize = 14.sp,
+                    fontFamily = FontFamily(Font(R.font.monasan_regular))
+                ),
+                color = Color.DarkGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (project.status == TaskStatus.IN_PROGRESS) {
+                Spacer(modifier = Modifier.height(12.dp))
+                LinearProgressIndicator(
+                    progress = project.progress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = Color(0xFF5B5EF4),
+                    trackColor = Color(0xFFEEE6FF)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More Options"
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = null,
+                        tint = Color.Gray,
+                        modifier = Modifier.size(16.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = project.dateEnd.ifEmpty { "No date" },
+                        style = MaterialTheme.typography.displaySmall.copy(
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily(Font(R.font.monasan_regular))
+                        ),
+                        color = Color.DarkGray
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    for (i in 0 until minOf(project.members.size, 3)) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .offset(x = (-4 * i).dp)
+                                .clip(CircleShape)
+                                .background(memberColors[i % memberColors.size])
+                                .border(1.dp, Color.White, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = project.members[i].first().toString(),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (project.members.size > 3) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .offset(x = (-12).dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF9E9E9E))
+                                .border(1.dp, Color.White, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "+${project.members.size - 3}",
+                                color = Color.White,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -195,18 +497,18 @@ fun GroupTopBar() {
 
 @Composable
 fun GroupInfoSection(
-    teamVM : TeamViewModel = viewModel(),
-    authVM : AuthViewModel = viewModel(),
-    projectVM : ProjectViewModel = viewModel()
+    teamVM: TeamViewModel = viewModel(),
+    authVM: AuthViewModel = viewModel(),
+    projectVM: ProjectViewModel = viewModel()
 ) {
     val currentUser by authVM.currentUser.observeAsState()
-    LaunchedEffect(Unit){
+    LaunchedEffect(Unit) {
         authVM.fetchAndSetCurrentUser()
     }
 //    Log.d("CurrentUser", "currentUser: $currentUser")
     Log.d("GroupInfoSection", "currentUser: ${currentUser?.team}")
     val team by teamVM.selectedTeam.collectAsState()
-    LaunchedEffect(String){
+    LaunchedEffect(String) {
         teamVM.getTeamById(currentUser?.team ?: "1XBGIW0NJZ8wKOeQvakx")
     }
     Log.d("GroupInfoSection", "team: $team")
@@ -242,14 +544,14 @@ fun GroupInfoSection(
                 modifier = Modifier.size(36.dp)
             )
         }
-        
+
         Spacer(modifier = Modifier.width(16.dp))
-        
-          Column(
+
+        Column(
             modifier = Modifier.weight(1f)
         ) {
             Text(
-                text = team?.name ?:"Team Name",
+                text = team?.name ?: "Team Name",
                 style = MaterialTheme.typography.displayMedium.copy(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
@@ -266,7 +568,7 @@ fun GroupInfoSection(
                 ),
             )
         }
-        
+
         // Members Preview
         Row {
             for (i in 0..2) {
@@ -287,7 +589,7 @@ fun GroupInfoSection(
                     )
                 }
             }
-            
+
             // More members indicator
             Box(
                 modifier = Modifier
@@ -310,10 +612,12 @@ fun GroupInfoSection(
 }
 
 @Composable
-fun FilterTabs() {
-    var selectedTabIndex by remember { mutableStateOf(0) }
+fun FilterTabs(
+    selectedTabIndex: Int,
+    onTabSelected: (Int) -> Unit
+) {
     val tabs = listOf("All Tasks", "In Progress", "Completed", "Overdue")
-    
+
     ScrollableTabRow(
         selectedTabIndex = selectedTabIndex,
         edgePadding = 0.dp,
@@ -331,7 +635,7 @@ fun FilterTabs() {
         tabs.forEachIndexed { index, title ->
             Tab(
                 selected = selectedTabIndex == index,
-                onClick = { selectedTabIndex = index },
+                onClick = { onTabSelected(index) },
                 text = {
                     Text(
                         text = title,
@@ -342,233 +646,6 @@ fun FilterTabs() {
                     )
                 }
             )
-        }
-    }
-}
-
-@Composable
-fun GroupTasksList(tasks: List<Project>,navController: NavController) {
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(tasks) { task ->
-            GroupTaskItem(task, onClickListener ={
-                navController.navigate(Screens.KanbanBoardPage.createRoute(task.id))
-            })
-        }
-    }
-}
-
-@Composable
-fun GroupTaskItem(project: Project, onClickListener: () -> Unit = {}) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp).clickable {
-            onClickListener()
-        },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = when (project.priority) {
-                TaskPriority.HIGH -> Color(0xFFFFF0F0)
-                TaskPriority.MEDIUM -> Color(0xFFFFF8E1)
-                TaskPriority.LOW -> Color(0xFFE8F5E9)
-            }
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Task Title and Category
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = project.name,
-                        style = MaterialTheme.typography.displayMedium.copy(
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                    )
-                    Spacer(Modifier.height(4.dp))
-//                    Row(
-//                        verticalAlignment = Alignment.CenterVertically
-//                    ) {
-//                        Icon(
-//                            imageVector = getCategoryIcon(project.category),
-//                            contentDescription = null,
-//                            tint = Color.Gray,
-//                            modifier = Modifier.size(14.dp)
-//                        )
-//                        Spacer(modifier = Modifier.width(3.dp))
-//                        Text(
-//                            text = project.category,
-//                            style = MaterialTheme.typography.displaySmall.copy(
-//                                fontSize = 12.sp,
-//                                fontFamily = FontFamily((Font(R.font.monasan_regular)))
-//                            ),
-//                            color = Color.Gray
-//                        )
-//                    }
-                }
-                
-                // Task Status
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            when (project.status) {
-                                TaskStatus.COMPLETED -> Color(0xFFE6F7FF)
-                                TaskStatus.IN_PROGRESS -> Color(0xFFE0F2F1)
-                                TaskStatus.PENDING -> Color(0xFFFFF0F0)
-                                TaskStatus.OVERDUE -> Color(0xFFFFEBEE)
-                            }
-                        )
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = when (project.status) {
-                            TaskStatus.COMPLETED -> "Completed"
-                            TaskStatus.IN_PROGRESS -> "In Progress"
-                            TaskStatus.PENDING -> "Pending"
-                            TaskStatus.OVERDUE -> "Overdue"
-                        },
-                        style = MaterialTheme.typography.displayMedium.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = when (project.status) {
-                            TaskStatus.COMPLETED -> Color(0xFF0288D1)
-                            TaskStatus.IN_PROGRESS -> Color(0xFF00897B)
-                            TaskStatus.PENDING -> Color(0xFFFF6D00)
-                            TaskStatus.OVERDUE -> Color(0xFFD32F2F)
-                        }
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Task Description
-            Text(
-                text = project.description,
-                style = MaterialTheme.typography.displaySmall.copy(
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily((Font(R.font.monasan_regular)))
-                ),
-                color = Color.DarkGray,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Progress Bar (if in progress)
-            if (project.status == TaskStatus.IN_PROGRESS) {
-                LinearProgressIndicator(
-                    progress = project.progress,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = Color(0xFF5B5EF4),
-                    trackColor = Color(0xFFEEE6FF)
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            
-            // Task Details
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Due Date
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DateRange,
-                        contentDescription = null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = project.dateEnd,
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily((Font(R.font.monasan_regular)))
-                        ),
-                        color = Color.DarkGray
-                    )
-                }
-                
-                // Assigned To
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    for (i in 0 until minOf(project.members.size, 3)) {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .offset(x = (-4 * i).dp)
-                                .clip(CircleShape)
-                                .background(memberColors[i % memberColors.size])
-                                .border(1.dp, Color.White, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = project.members[i].first().toString(),
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    
-                    if (project.members.size > 3) {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .offset(x = (-12).dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF9E9E9E))
-                                .border(1.dp, Color.White, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "+${project.members.size - 3}",
-                                color = Color.White,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-                
-//                // Comments Count
-//                Row(
-//                    verticalAlignment = Alignment.CenterVertically
-//                ) {
-//                    Icon(
-//                        imageVector = Icons.Default.PlayArrow,
-//                        contentDescription = null,
-//                        tint = Color.Gray,
-//                        modifier = Modifier.size(16.dp)
-//                    )
-//                    Spacer(modifier = Modifier.width(4.dp))
-//                    Text(
-//                        text = "${project.commentsCount}",
-//                        fontSize = 12.sp,
-//                        color = Color.Gray
-//                    )
-//                }
-            }
         }
     }
 }
